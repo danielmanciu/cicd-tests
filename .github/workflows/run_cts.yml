@@ -1,0 +1,72 @@
+name: CI Tests
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps: 
+      - name: set up JDK 11
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        run: |
+          #sudo apt update
+          #sudo apt install android-sdk -y
+
+      - name: Download CTS
+        run: |
+          #wget https://dl.google.com/dl/android/cts/android-cts-14_r4-linux_x86-x86.zip
+          #unzip android-cts-14_r4-linux_x86-x86.zip
+
+      - name: Install and launch emulator
+        run: |
+          sudo apt install pulseaudio bridge-utils qemu-kvm virtinst libvirt-daemon virt-manager -y
+          sudo adduser $USER kvm
+          # sudo adduser $USER libvirtd
+          groups
+          virsh list --all
+          rmmod kvm
+          modprobe -a kvm
+          git clone -b mirror-car-apps-aosp-release --single-branch https://android.googlesource.com/platform/packages/apps/Car/tests
+          cd tests/tools/
+          chmod +x ./launch_emu.sh
+          ./launch_emu.sh -i -a 11370359
+          ./launch_emu.sh -v "-no-window"
+ 
+      - name: Wait for device to boot
+        run: |
+          adb wait-for-device
+          echo "Give additional time to boot"
+          sleep 15
+          adb shell getprop | grep fingerprint
+
+      - name: Run CTS
+        run: |
+          cd android-cts/tools
+          ./cts-tradefed run commandAndExit cts-dev --m CtsJniTestCases
+
+      - name: Zip CTS results
+        run: |
+          cd results/latest
+          zip -r results.zip *
+
+      - name: Upload CTS results 
+        uses: actions/upload-artifact@v4
+        with:
+          # Name of the artifact to upload.
+          # Optional. Default is 'artifact'
+          name: cts_results
+
+          # A file, directory or wildcard pattern that describes what to upload
+          # Required.
+          path: results/latest/results.zip
+
